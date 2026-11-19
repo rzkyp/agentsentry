@@ -9,6 +9,13 @@ Scopes
 ``mcp``   -> only MCP configuration files (``.mcp.json``, ``claude_desktop_config.json``, ...)
 ``skill`` -> only agent skill files (``SKILL.md`` + siblings in the same directory)
 ``all``   -> both
+
+Rule tuning
+-----------
+``suffixes`` restricts a rule to files with those extensions (used to keep
+prose rules away from JSON schemas and API specs). ``ignore(matched, before)``
+returns True when a match is a known false positive (loopback addresses,
+JSON-schema pointers, documentation placeholders, ...).
 """
 
 from __future__ import annotations
@@ -28,6 +35,23 @@ SCOPE_MCP = "mcp"
 SCOPE_SKILL = "skill"
 SCOPE_ALL = "all"
 
+#: Files that carry human-readable instructions. Prose rules (prompt injection,
+#: tool poisoning) must not run over JSON schemas or API specifications.
+SKILL_TEXT_SUFFIXES = (
+    ".md",
+    ".markdown",
+    ".txt",
+    ".py",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".ps1",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+)
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -38,12 +62,63 @@ class Rule:
     description: str
     remediation: str
     scopes: tuple
+    suffixes: tuple = None
+    ignore: object = None
 
     def matches_scope(self, scope: str) -> bool:
         return SCOPE_ALL in self.scopes or scope in self.scopes
 
+    def matches_suffix(self, suffix: str) -> bool:
+        return self.suffixes is None or suffix in self.suffixes
 
-def _rule(rule_id, title, severity, pattern, description, remediation, scopes=(SCOPE_ALL,)):
+
+# --------------------------------------------------------------- FP helpers
+
+_INJECTION_PROSE = re.compile(
+    r"(?i)\b(reject|rejects|detection|phrases?\s+like|such\s+as|example|avoid|indicator)s?\b"
+)
+
+_PLACEHOLDER_VALUE = re.compile(
+    r"(?i)(your[-_]|demo[_-]?key|changeme|placeholder|\$\{|<[^>]{1,40}>|\.\.\.|x{3,}|redacted|op://)"
+)
+
+
+def _ignore_injection_prose(matched: str, before: str = "") -> bool:
+    """`ignore previous instructions` quoted inside prose is not an attack."""
+    return bool(_INJECTION_PROSE.search(before[-60:]))
+
+
+def _ignore_placeholder_secret(matched: str, before: str = "") -> bool:
+    """`api_key="your-api-key"` is a placeholder, not a leaked secret."""
+    return bool(_PLACEHOLDER_VALUE.search(matched))
+
+
+def _ignore_path_like_blob(matched: str, before: str = "") -> bool:
+    """`#/definitions/Foo` and `vs/editor/bar` are identifiers, not base64."""
+    if "=" in matched or "+" in matched:
+        return False
+    return "/" in matched
+
+
+def _ignore_loopback_or_private(matched: str, before: str = "") -> bool:
+    """`127.0.0.1` and RFC1918 addresses are local, not exfil endpoints."""
+    m = re.search(r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})", matched)
+    if not m:
+        return False
+    a, b = int(m.group(1)), int(m.group(2))
+    if a in (0, 10, 127):
+        return True
+    if a == 172 and 16 <= b <= 31:
+        return True
+    if a == 192 and b == 168:
+        return True
+    if a == 169 and b == 254:
+        return True
+    return False
+
+
+def _rule(rule_id, title, severity, pattern, description, remediation,
+          scopes=(SCOPE_ALL,), suffixes=None, ignore=None):
     return Rule(
         id=rule_id,
         title=title,
@@ -52,6 +127,8 @@ def _rule(rule_id, title, severity, pattern, description, remediation, scopes=(S
         description=description,
         remediation=remediation,
         scopes=tuple(scopes),
+        suffixes=tuple(suffixes) if suffixes else None,
+        ignore=ignore,
     )
 
 
@@ -96,7 +173,7 @@ RULES = [
         r"|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}"
         r"|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}"
         r"|AIza[0-9A-Za-z_\-]{35}"
-        r"|(?:sk|rk)-[A-Za-z0-9_\-]{20,})",
+        r"|\b(?:sk|rk)-[A-Za-z0-9_\-]{20,})",
         "A private key, API token, or cloud credential is embedded in the file.",
         "Rotate the credential immediately and load it from a secret manager or environment variable.",
     ),
@@ -113,6 +190,7 @@ RULES = [
         r"|forget\s+(?:everything|all)\s+(?:above|previous|prior))",
         "The text contains classic prompt-injection phrasing aimed at overriding agent instructions.",
         "Delete the instruction. Skill content must describe a task, not re-program the model.",
+        ignore=_ignore_injection_prose,
     ),
     # --------------------------------------------------------------------- high
     _rule(
@@ -122,13 +200,14 @@ RULES = [
         r"(?i)(api[_-]?key|secret|token|password|passwd|client[_-]?secret)\s*[:=]\s*[\"'][^\"'\s]{12,}[\"']",
         "A secret-looking value is assigned to a credential-like variable.",
         "Use an environment variable or secret manager; never commit literals.",
+        ignore=_ignore_placeholder_secret,
     ),
     _rule(
         "CRED-001",
         "Credential store access",
         HIGH,
-        r"(~/\.ssh|id_rsa|id_ed25519|\.aws/credentials|\.aws/config|\.config/gcloud"
-        r"|Login\s+Data|cookies\.sqlite|keychain|secret\.pem|credential\.json|\.netrc)",
+        r"(~/\.ssh\b|id_rsa\b|id_ed25519\b|\.aws/credentials|\.aws/config"
+        r"|\.config/gcloud|cookies\.sqlite|Login\s+Data|\.netrc\b)",
         "The code reads credential or key material from the user's machine.",
         "Access only explicit, user-approved files; never harvest SSH, cloud, or browser credentials.",
     ),
@@ -141,6 +220,7 @@ RULES = [
         r"|\\x[0-9a-f]{2}(?:\\x[0-9a-f]{2}){15,})",
         "A long encoded blob or a decode primitive suggests hidden or obfuscated instructions.",
         "Ship readable instructions. If encoding is genuinely required, document why and verify integrity.",
+        ignore=_ignore_path_like_blob,
     ),
     _rule(
         "DESTR-001",
@@ -159,9 +239,12 @@ RULES = [
         "PERSIST-001",
         "Persistence mechanism",
         HIGH,
-        r"(\.bashrc|\.zshrc|\.profile\b|crontab\s+-|schtasks\s+/create"
-        r"|HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-        r"|launchctl\s+load|systemd/system/[A-Za-z0-9._-]+\.service)",
+        r"(>>?\s*[^\n>]*\.bashrc\b|>>?\s*[^\n>]*\.zshrc\b|>>?\s*[^\n>]*\.profile\b"
+        r"|crontab\s+-[elr]\b"
+        r"|schtasks\s+/create\b"
+        r"|launchctl\s+(?:load|enable)\b"
+        r"|systemctl\s+enable\b"
+        r"|CurrentVersion\\Run\b)",
         "The code installs a persistence mechanism (shell profile, cron, run key, service).",
         "Do not modify startup paths; ask the user before changing system state.",
     ),
@@ -182,6 +265,7 @@ RULES = [
         r"Note:\s*(?:the\s+)?(?:user|assistant)\b|IMPORTANT:\s*(?:do\s+not\s+tell|never\s+tell)\b)",
         "Skill text embeds tool-call markup or assistant-directed notes that can hijack tool use.",
         "Keep skill prose free of tool markup; let the harness own the tool schema.",
+        suffixes=SKILL_TEXT_SUFFIXES,
     ),
     _rule(
         "MCP-006",
@@ -227,7 +311,7 @@ RULES = [
         "EXEC-003",
         "Dynamic code execution",
         MEDIUM,
-        r"(?<![\w.])(eval|exec|compile)\s*\(",
+        r"(?<![\w.])(eval|exec|compile)\(",
         "Dynamic execution primitives can turn untrusted input into code.",
         "Prefer static dispatch or lookup tables; if unavoidable, sandbox and validate the input.",
     ),
@@ -284,6 +368,7 @@ RULES = [
         r"((?:https?://)?\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{2,5})?(?:/[^\s\"']*)?)",
         "The file references a raw IP address, which can indicate a throwaway C2 or exfil host.",
         "Use a named, reviewable service endpoint.",
+        ignore=_ignore_loopback_or_private,
     ),
 ]
 

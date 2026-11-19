@@ -39,6 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="high",
         help="exit 1 when a finding at this severity or higher exists (default: high)",
     )
+    p_scan.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="skip paths matching this fnmatch pattern (repeatable, e.g. --exclude '*/cache/*')",
+    )
+    p_scan.add_argument("--lang", choices=["en", "id"], default="en", help="language of the report summary")
     p_scan.add_argument("--no-color", action="store_true")
     p_scan.add_argument("--quiet", action="store_true", help="suppress report output (useful with --output)")
 
@@ -62,9 +70,13 @@ def main(argv=None) -> int:
     if not root.exists():
         parser.error(f"path does not exist: {args.path}")
 
-    result = scan(root)
-    renderer = {"table": render_table, "json": render_json, "markdown": render_markdown}[args.format]
-    output = renderer(result, no_color=args.no_color) if args.format == "table" else renderer(result)
+    result = scan(root, excludes=args.exclude)
+    renderer = {
+        "table": lambda: render_table(result, no_color=args.no_color, lang=args.lang),
+        "json": lambda: render_json(result, lang=args.lang),
+        "markdown": lambda: render_markdown(result, lang=args.lang),
+    }[args.format]
+    output = renderer()
 
     if args.output:
         out = Path(args.output).expanduser()

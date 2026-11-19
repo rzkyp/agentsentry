@@ -31,7 +31,53 @@ def summary_line(result) -> str:
     )
 
 
-def render_json(result) -> str:
+# ------------------------------------------------------------------ summary
+
+_SUMMARY = {
+    "en": {
+        "title": "## Summary",
+        "scanned": "Scanned {files} file(s): {mcp} MCP config(s) and {skills} agent skill dir(s).",
+        "found": "Found {total} issue(s): {line}.",
+        "clean": "No findings. The target is clean for the patterns AgentSentry watches.",
+        "top": "Most frequent rules: {rules}.",
+        "priority": "Review CRITICAL and HIGH first; MEDIUM and LOW are hygiene items.",
+        "fp": "Rules match text patterns, so documentation and prose can trigger them. "
+              "Open the cited line before acting.",
+    },
+    "id": {
+        "title": "## Ringkasan",
+        "scanned": "Memindai {files} file: {mcp} MCP config dan {skills} dir agent skill.",
+        "found": "Ditemukan {total} temuan: {line}.",
+        "clean": "Tidak ada temuan. Target bersih untuk pola yang dipantau AgentSentry.",
+        "top": "Aturan paling sering muncul: {rules}.",
+        "priority": "Prioritaskan CRITICAL dan HIGH; MEDIUM dan LOW bersifat hygiene.",
+        "fp": "Aturan berbasis pola teks, jadi dokumentasi/prose bisa ikut terdeteksi. "
+              "Buka baris yang dikutip sebelum mengambil tindakan.",
+    },
+}
+
+
+def summary_lines(result, lang: str = "en") -> list:
+    t = _SUMMARY.get(lang, _SUMMARY["en"])
+    c = result.counts
+    total = len(result.findings)
+    lines = [
+        t["scanned"].format(files=result.files_scanned, mcp=result.mcp_configs, skills=result.skill_dirs),
+    ]
+    if total:
+        lines.append(t["found"].format(total=total, line=summary_line(result)))
+        top = ", ".join(f"`{rule_id}` ({hits})" for rule_id, hits in result.top_rules(3))
+        lines.append(t["top"].format(rules=top))
+        lines.append(t["priority"])
+    else:
+        lines.append(t["clean"])
+    lines.append(t["fp"])
+    return lines
+
+
+# ------------------------------------------------------------------- JSON
+
+def render_json(result, lang: str = "en") -> str:
     payload = {
         "schema": SCHEMA,
         "generated_at": _ts(),
@@ -42,6 +88,10 @@ def render_json(result) -> str:
             "skill_dirs": result.skill_dirs,
             "findings": len(result.findings),
             "by_severity": result.counts,
+            "top_rules": [
+                {"rule_id": rule_id, "hits": hits} for rule_id, hits in result.top_rules(5)
+            ],
+            "notes": summary_lines(result, lang),
         },
         "findings": [
             {
@@ -61,7 +111,10 @@ def render_json(result) -> str:
     return json.dumps(payload, indent=2)
 
 
-def render_markdown(result) -> str:
+# --------------------------------------------------------------- Markdown
+
+def render_markdown(result, lang: str = "en") -> str:
+    t = _SUMMARY.get(lang, _SUMMARY["en"])
     lines = [
         "# AgentSentry scan report",
         "",
@@ -70,6 +123,12 @@ def render_markdown(result) -> str:
         f"- **Files scanned:** {result.files_scanned} "
         f"({result.mcp_configs} MCP config(s), {result.skill_dirs} skill dir(s))",
         f"- **Findings:** {len(result.findings)} — {summary_line(result)}",
+        "",
+        t["title"],
+        "",
+    ]
+    lines += [f"- {line}" for line in summary_lines(result, lang)]
+    lines += [
         "",
         "## Findings by rule",
         "",
@@ -110,7 +169,9 @@ def render_markdown(result) -> str:
     return "\n".join(lines)
 
 
-def render_table(result, no_color: bool = False) -> str:
+# ------------------------------------------------------------------ table
+
+def render_table(result, no_color: bool = False, lang: str = "en") -> str:
     lines = [
         f"AgentSentry — {result.root}",
         f"Files: {result.files_scanned} | MCP configs: {result.mcp_configs} | Skill dirs: {result.skill_dirs}",
@@ -132,6 +193,7 @@ def render_table(result, no_color: bool = False) -> str:
             location = "..." + location[-37:]
         snippet = f.snippet.replace("\n", " ")[:60]
         lines.append(f"{f.rule_id:<10} {severity} {location:<42} {snippet}")
+    lines += ["", _SUMMARY.get(lang, _SUMMARY["en"])["fp"]]
     return "\n".join(lines)
 
 

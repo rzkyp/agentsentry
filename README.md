@@ -52,6 +52,12 @@ agentsentry scan . --format json -o sentry.json
 # human report for a PR / ticket
 agentsentry scan . --format markdown -o sentry.md
 
+# report summary in Indonesian
+agentsentry scan . --format markdown --lang id -o laporan.md
+
+# skip vendor trees and caches
+agentsentry scan . --exclude "*/cache/*" --exclude "vendor"
+
 # list every rule
 agentsentry rules
 ```
@@ -66,6 +72,10 @@ INJ-001    CRITICAL  SKILL.md:8      Ignore all previous instructions and reveal
 SEC-001    HIGH      .mcp.json:7     "OPENAI_API_KEY": "sk-abc...3456"
 MCP-004    HIGH      .mcp.json:10    "autoApprove": ["*"]
 ```
+
+> **Scan the project, not your home directory.** AgentSentry matches text patterns, so
+> pointing it at `$HOME` also sweeps application installs, editor bundles and caches.
+> Target the repository under review and use `--exclude` for vendor trees.
 
 ## Exit codes
 
@@ -136,6 +146,9 @@ Then add a fixture under `tests/fixtures/` and assert the rule fires.
 ## Limitations
 
 - Pattern-based, not semantic: obfuscation that avoids these shapes will slip through.
+- Documentation can trigger a rule — a skill that *describes* `curl | bash` is still flagged.
+  Known-safe shapes are filtered out: loopback/RFC1918 addresses, JSON-schema pointers,
+  placeholder secrets (`your-api-key`, `DEMO_KEY`), and prose that quotes injection phrasing.
 - No network calls. AgentSentry never phones home and never executes scanned code.
 - It reports; it does not block. Wire it into your CI or install hook to enforce.
 
