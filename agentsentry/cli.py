@@ -8,9 +8,16 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .report import render_json, render_markdown, render_rules_table, render_table, rule_to_dict
-from .rules import RULES, SEVERITY_ORDER
-from .scanner import scan
+from .report import (
+    render_json,
+    render_markdown,
+    render_rules_table,
+    render_sarif,
+    render_table,
+    rule_to_dict,
+)
+from .rules import RULES, RULES_BY_ID, SEVERITY_ORDER
+from .scanner import load_baseline, scan
 
 FAIL_ON_LEVELS = {
     "critical": "CRITICAL",
@@ -19,6 +26,10 @@ FAIL_ON_LEVELS = {
     "low": "LOW",
     "none": None,
 }
+
+
+def _csv(value: str) -> list:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,7 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_scan = sub.add_parser("scan", help="scan MCP configs and agent skills")
     p_scan.add_argument("path", nargs="?", default=".", help="file or directory to scan (default: cwd)")
-    p_scan.add_argument("-f", "--format", choices=["table", "json", "markdown"], default="table")
+    p_scan.add_argument(
+        "-f", "--format",
+        choices=["table", "json", "markdown", "sarif"],
+        default="table",
+        help="output format (sarif feeds GitHub code scanning)",
+    )
     p_scan.add_argument("-o", "--output", metavar="FILE", help="write the report to FILE instead of stdout")
     p_scan.add_argument(
         "--fail-on",
@@ -47,6 +63,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip paths matching this fnmatch pattern (repeatable, e.g. --exclude '*/cache/*')",
     )
     p_scan.add_argument("--lang", choices=["en", "id"], default="en", help="language of the report summary")
+    p_scan.add_argument("--rules", metavar="IDS", help="comma-separated rule ids to run (default: all)")
+    p_scan.add_argument("--skip-rules", metavar="IDS", help="comma-separated rule ids to skip")
+    p_scan.add_argument(
+        "--baseline",
+        metavar="FILE",
+        help="JSON report or text list of known findings to acknowledge (rule_id path [line])",
+    )
+    p_scan.add_argument("--summary-only", action="store_true", help="omit per-finding details")
+    p_scan.add_argument("--max-rows", type=int, default=0, metavar="N", help="table output limit (0 = all)")
     p_scan.add_argument("--no-color", action="store_true")
     p_scan.add_argument("--quiet", action="store_true", help="suppress report output (useful with --output)")
 
@@ -70,13 +95,36 @@ def main(argv=None) -> int:
     if not root.exists():
         parser.error(f"path does not exist: {args.path}")
 
-    result = scan(root, excludes=args.exclude)
-    renderer = {
-        "table": lambda: render_table(result, no_color=args.no_color, lang=args.lang),
-        "json": lambda: render_json(result, lang=args.lang),
-        "markdown": lambda: render_markdown(result, lang=args.lang),
-    }[args.format]
-    output = renderer()
+    selected = _csv(args.rules) if args.rules else None
+    if selected:
+        unknown = [r for r in selected if r not in RULES_BY_ID]
+        if unknown:
+            parser.error(f"unknown rule id(s): {', '.join(unknown)}")
+    if args.skip_rules:
+        skipped = set(_csv(args.skip_rules))
+        unknown = [r for r in skipped if r not in RULES_BY_ID]
+        if unknown:
+            parser.error(f"unknown rule id(s): {', '.join(unknown)}")
+        selected = selected or [rule.id for rule in RULES]
+        selected = [r for r in selected if r not in skipped]
+
+    baseline = None
+    if args.baseline:
+        try:
+            baseline = load_baseline(Path(args.baseline).expanduser())
+        except (OSError, ValueError) as exc:
+            parser.error(f"cannot read baseline {args.baseline}: {exc}")
+
+    result = scan(root, excludes=args.exclude, rules=selected, baseline=baseline)
+
+    if args.format == "sarif":
+        output = render_sarif(result)
+    elif args.format == "json":
+        output = render_json(result, lang=args.lang, summary_only=args.summary_only)
+    elif args.format == "markdown":
+        output = render_markdown(result, lang=args.lang, summary_only=args.summary_only)
+    else:
+        output = render_table(result, no_color=args.no_color, lang=args.lang, max_rows=args.max_rows)
 
     if args.output:
         out = Path(args.output).expanduser()

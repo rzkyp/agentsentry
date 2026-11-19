@@ -14,11 +14,12 @@ produce a firehose of matches from application installs.
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .rules import RULES, SCOPE_MCP, SCOPE_SKILL, SEVERITY_ORDER
+from .rules import RULES, RULES_BY_ID, SCOPE_MCP, SCOPE_SKILL, SEVERITY_ORDER
 
 MCP_CONFIG_NAMES = {
     ".mcp.json",
@@ -94,16 +95,25 @@ class ScanResult:
     mcp_configs: int = 0
     skill_dirs: int = 0
     findings: list = field(default_factory=list)
+    acknowledged: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    rules_used: list = field(default_factory=list)
     _seen: set = field(default_factory=set, repr=False)
 
-    def add(self, finding: Finding) -> None:
-        """Add a finding, de-duplicating on (rule, path, line)."""
+    def add(self, finding: Finding, baseline) -> None:
+        """Add a finding, de-duplicating on (rule, path, line).
+
+        Findings present in *baseline* are kept on the result but moved to
+        ``acknowledged`` so they do not affect counts or the exit code.
+        """
         key = (finding.rule_id, finding.path, finding.line)
         if key in self._seen:
             return
         self._seen.add(key)
-        self.findings.append(finding)
+        if _in_baseline(finding, baseline):
+            self.acknowledged.append(finding)
+        else:
+            self.findings.append(finding)
 
     @property
     def counts(self) -> dict:
@@ -132,11 +142,31 @@ class ScanResult:
             )
         ][:limit]
 
+    def top_files(self, limit: int = 5) -> list:
+        """``[(path, hits), ...]`` for the files with the most findings."""
+        counts = {}
+        for finding in self.findings:
+            counts[finding.path] = counts.get(finding.path, 0) + 1
+        return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
 
-def scan(root, excludes=()) -> ScanResult:
-    """Scan *root* (file or directory) and return a :class:`ScanResult`."""
+
+def scan(root, excludes=(), rules=None, baseline=None) -> ScanResult:
+    """Scan *root* (file or directory) and return a :class:`ScanResult`.
+
+    *rules* — optional iterable of rule ids to run (default: every rule).
+    *baseline* — optional ``(pairs, triples)`` set from :func:`load_baseline`.
+    """
     root = Path(root)
     result = ScanResult(root=str(root))
+
+    selected = RULES
+    if rules:
+        unknown = [r for r in rules if r not in RULES_BY_ID]
+        if unknown:
+            raise ValueError(f"unknown rule id(s): {', '.join(unknown)}")
+        selected = [RULES_BY_ID[r] for r in rules]
+    result.rules_used = [rule.id for rule in selected]
+
     targets, skill_dirs = discover_targets(root, excludes)
     result.skill_dirs = len(skill_dirs)
 
@@ -155,7 +185,7 @@ def scan(root, excludes=()) -> ScanResult:
         suffix = path.suffix.lower()
         lines = text.splitlines()
 
-        for rule in RULES:
+        for rule in selected:
             if not rule.matches_scope(scope):
                 continue
             if not rule.matches_suffix(suffix):
@@ -178,9 +208,66 @@ def scan(root, excludes=()) -> ScanResult:
                         snippet=snippet[:MAX_SNIPPET],
                         message=rule.description,
                         remediation=rule.remediation,
-                    )
+                    ),
+                    baseline,
                 )
     return result
+
+
+def load_baseline(path):
+    """Read a baseline file.
+
+    Supported formats:
+
+    * JSON in AgentSentry report shape (``{"findings": [{rule_id, file, line}, ...]}``)
+      or a bare list of those objects.
+    * Plain text, one entry per line: ``RULE_ID path [line]`` or ``RULE_ID:path:line``.
+
+    Returns ``(pairs, triples)`` where pairs are ``(rule_id, path)`` and triples add the
+    line number. Paths are normalised to forward slashes and matched against the scan-root
+    relative path, so generate the baseline from the same directory you scan.
+    """
+    text = Path(path).read_text(encoding="utf-8", errors="replace").strip()
+    pairs, triples = set(), set()
+
+    def _add(rule_id, file_path, line=None):
+        norm = _norm_path(file_path)
+        pairs.add((rule_id, norm))
+        if isinstance(line, int):
+            triples.add((rule_id, norm, line))
+
+    if text.startswith("{") or text.startswith("["):
+        data = json.loads(text)
+        items = data.get("findings", []) if isinstance(data, dict) else data
+        for item in items:
+            _add(item.get("rule_id") or item.get("ruleId"), item.get("file") or item.get("path"),
+                 item.get("line"))
+    else:
+        for raw in text.splitlines():
+            entry = raw.strip()
+            if not entry or entry.startswith("#"):
+                continue
+            if ":" in entry and entry.split()[0].count(":") >= 1 and " " not in entry:
+                rule_id, _, rest = entry.partition(":")
+                parts = rest.split(":")
+                line = int(parts[-1]) if len(parts) > 1 and parts[-1].isdigit() else None
+                _add(rule_id, parts[0], line)
+            else:
+                parts = entry.split()
+                line = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+                _add(parts[0], parts[1], line)
+    return pairs, triples
+
+
+def _in_baseline(finding: Finding, baseline) -> bool:
+    if not baseline:
+        return False
+    pairs, triples = baseline
+    return (finding.rule_id, finding.path) in pairs or (finding.rule_id, finding.path, finding.line) in triples
+
+
+def _norm_path(value) -> str:
+    return str(value).replace("\\", "/")
 
 
 def discover_targets(root, excludes=()):

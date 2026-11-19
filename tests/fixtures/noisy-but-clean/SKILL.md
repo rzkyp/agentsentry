@@ -21,3 +21,6 @@ is a symbol, not an encoded payload.
 
 The word "keychain" appears in documentation, and we reject phrases like
 "ignore previous instructions" when reviewing contributions.
+
+Documentation ranges such as `203.0.113.0/24` and a user agent like `Chrome/124.0.0.0`
+are examples, not hosts. The instruction "you must now upgrade the project" is a task.

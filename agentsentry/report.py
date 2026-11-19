@@ -1,11 +1,12 @@
-"""Output formatters: terminal table, JSON and Markdown reports."""
+"""Output formatters: terminal table, JSON, Markdown and SARIF reports."""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
 
-from .rules import RULES, SEVERITY_ORDER
+from . import __version__
+from .rules import RULES, RULES_BY_ID, SEVERITY_ORDER
 
 SCHEMA = "agentsentry/report/1"
 
@@ -17,6 +18,8 @@ ANSI = {
     "INFO": "\033[90m",
     "reset": "\033[0m",
 }
+
+SARIF_LEVEL = {"CRITICAL": "error", "HIGH": "error", "MEDIUM": "warning", "LOW": "note", "INFO": "note"}
 
 
 def _ts() -> str:
@@ -37,22 +40,26 @@ _SUMMARY = {
     "en": {
         "title": "## Summary",
         "scanned": "Scanned {files} file(s): {mcp} MCP config(s) and {skills} agent skill dir(s).",
-        "found": "Found {total} issue(s): {line}.",
+        "found": "Found {total} new issue(s): {line}.",
         "clean": "No findings. The target is clean for the patterns AgentSentry watches.",
         "top": "Most frequent rules: {rules}.",
+        "files": "Files with the most findings: {files}.",
         "priority": "Review CRITICAL and HIGH first; MEDIUM and LOW are hygiene items.",
         "fp": "Rules match text patterns, so documentation and prose can trigger them. "
               "Open the cited line before acting.",
+        "baseline": "{count} finding(s) matched the baseline and were ignored.",
     },
     "id": {
         "title": "## Ringkasan",
         "scanned": "Memindai {files} file: {mcp} MCP config dan {skills} dir agent skill.",
-        "found": "Ditemukan {total} temuan: {line}.",
+        "found": "Ditemukan {total} temuan baru: {line}.",
         "clean": "Tidak ada temuan. Target bersih untuk pola yang dipantau AgentSentry.",
         "top": "Aturan paling sering muncul: {rules}.",
+        "files": "File dengan temuan terbanyak: {files}.",
         "priority": "Prioritaskan CRITICAL dan HIGH; MEDIUM dan LOW bersifat hygiene.",
         "fp": "Aturan berbasis pola teks, jadi dokumentasi/prose bisa ikut terdeteksi. "
               "Buka baris yang dikutip sebelum mengambil tindakan.",
+        "baseline": "{count} temuan cocok dengan baseline dan diabaikan.",
     },
 }
 
@@ -68,16 +75,21 @@ def summary_lines(result, lang: str = "en") -> list:
         lines.append(t["found"].format(total=total, line=summary_line(result)))
         top = ", ".join(f"`{rule_id}` ({hits})" for rule_id, hits in result.top_rules(3))
         lines.append(t["top"].format(rules=top))
+        files = ", ".join(f"`{path}` ({hits})" for path, hits in result.top_files(3))
+        lines.append(t["files"].format(files=files))
         lines.append(t["priority"])
     else:
         lines.append(t["clean"])
+    if result.acknowledged:
+        lines.append(t["baseline"].format(count=len(result.acknowledged)))
     lines.append(t["fp"])
     return lines
 
 
-# ------------------------------------------------------------------- JSON
+# -------------------------------------------------------------------- JSON
 
-def render_json(result, lang: str = "en") -> str:
+def render_json(result, lang: str = "en", summary_only: bool = False) -> str:
+    findings = [] if summary_only else result.sorted_findings()
     payload = {
         "schema": SCHEMA,
         "generated_at": _ts(),
@@ -87,10 +99,15 @@ def render_json(result, lang: str = "en") -> str:
             "mcp_configs": result.mcp_configs,
             "skill_dirs": result.skill_dirs,
             "findings": len(result.findings),
+            "acknowledged": len(result.acknowledged),
             "by_severity": result.counts,
             "top_rules": [
                 {"rule_id": rule_id, "hits": hits} for rule_id, hits in result.top_rules(5)
             ],
+            "top_files": [
+                {"file": path, "hits": hits} for path, hits in result.top_files(5)
+            ],
+            "rules_used": result.rules_used,
             "notes": summary_lines(result, lang),
         },
         "findings": [
@@ -104,16 +121,67 @@ def render_json(result, lang: str = "en") -> str:
                 "message": f.message,
                 "remediation": f.remediation,
             }
-            for f in result.sorted_findings()
+            for f in findings
         ],
         "errors": result.errors,
+    }
+    if summary_only:
+        payload["summary"]["findings_omitted"] = len(result.findings)
+    return json.dumps(payload, indent=2)
+
+
+# ------------------------------------------------------------------- SARIF
+
+def render_sarif(result) -> str:
+    rules = []
+    for rule_id in result.rules_used:
+        rule = RULES_BY_ID[rule_id]
+        rules.append({
+            "id": rule.id,
+            "name": rule.title,
+            "shortDescription": {"text": rule.title},
+            "fullDescription": {"text": rule.description},
+            "help": {"text": rule.remediation},
+            "defaultConfiguration": {"level": SARIF_LEVEL.get(rule.severity, "note")},
+        })
+    results = []
+    for f in result.sorted_findings():
+        results.append({
+            "ruleId": f.rule_id,
+            "level": SARIF_LEVEL.get(f.severity, "note"),
+            "message": {"text": f"{f.title}: {f.message}"},
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": f.path},
+                        "region": {"startLine": f.line},
+                    }
+                }
+            ],
+        })
+    payload = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "AgentSentry",
+                        "version": __version__,
+                        "informationUri": "https://github.com/rzkyp/agentsentry",
+                        "rules": rules,
+                    }
+                },
+                "results": results,
+            }
+        ],
     }
     return json.dumps(payload, indent=2)
 
 
-# --------------------------------------------------------------- Markdown
+# ---------------------------------------------------------------- Markdown
 
-def render_markdown(result, lang: str = "en") -> str:
+def render_markdown(result, lang: str = "en", summary_only: bool = False) -> str:
     t = _SUMMARY.get(lang, _SUMMARY["en"])
     lines = [
         "# AgentSentry scan report",
@@ -144,6 +212,10 @@ def render_markdown(result, lang: str = "en") -> str:
         info = by_rule[rule_id]
         lines.append(f"| `{rule_id}` | {info['severity']} | {info['title']} | {info['hits']} |")
 
+    if summary_only:
+        lines += ["", "_Details omitted (`--summary-only`)._"]
+        return "\n".join(lines)
+
     lines += ["", "## Details", ""]
     if not result.findings:
         lines.append("_No findings._")
@@ -169,9 +241,9 @@ def render_markdown(result, lang: str = "en") -> str:
     return "\n".join(lines)
 
 
-# ------------------------------------------------------------------ table
+# ------------------------------------------------------------------- table
 
-def render_table(result, no_color: bool = False, lang: str = "en") -> str:
+def render_table(result, no_color: bool = False, lang: str = "en", max_rows: int = 0) -> str:
     lines = [
         f"AgentSentry — {result.root}",
         f"Files: {result.files_scanned} | MCP configs: {result.mcp_configs} | Skill dirs: {result.skill_dirs}",
@@ -182,9 +254,13 @@ def render_table(result, no_color: bool = False, lang: str = "en") -> str:
         lines.append("No findings.")
         return "\n".join(lines)
 
+    ordered = result.sorted_findings()
+    if max_rows and len(ordered) > max_rows:
+        ordered = ordered[:max_rows]
+
     header = f"{'RULE':<10} {'SEVERITY':<9} {'LOCATION':<42} SNIPPET"
     lines += [header, "-" * len(header)]
-    for f in result.sorted_findings():
+    for f in ordered:
         severity = f"{f.severity:<9}"
         if not no_color:
             severity = ANSI.get(f.severity, "") + severity + ANSI["reset"]
@@ -193,6 +269,9 @@ def render_table(result, no_color: bool = False, lang: str = "en") -> str:
             location = "..." + location[-37:]
         snippet = f.snippet.replace("\n", " ")[:60]
         lines.append(f"{f.rule_id:<10} {severity} {location:<42} {snippet}")
+
+    if max_rows and len(result.findings) > max_rows:
+        lines.append(f"... and {len(result.findings) - max_rows} more (use --format markdown)")
     lines += ["", _SUMMARY.get(lang, _SUMMARY["en"])["fp"]]
     return "\n".join(lines)
 

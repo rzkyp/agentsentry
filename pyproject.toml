@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentsentry"
-version = "0.1.0"
+version = "0.3.0"
 description = "Security scanner for MCP servers and AI agent skills: prompt injection, tool poisoning, exfiltration, and supply-chain risks."
 readme = "README.md"
 requires-python = ">=3.9"

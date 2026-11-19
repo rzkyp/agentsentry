@@ -58,6 +58,15 @@ agentsentry scan . --format markdown --lang id -o laporan.md
 # skip vendor trees and caches
 agentsentry scan . --exclude "*/cache/*" --exclude "vendor"
 
+# GitHub code scanning input
+agentsentry scan . --format sarif -o sentry.sarif
+
+# acknowledge known findings so CI only fails on new ones
+agentsentry scan . --baseline baseline.json --fail-on high
+
+# compact report (no per-finding details)
+agentsentry scan . --summary-only --format markdown -o ringkasan.md
+
 # list every rule
 agentsentry rules
 ```
@@ -93,13 +102,18 @@ Default threshold is `high`. Override with `--fail-on critical|high|medium|low|n
 - name: AgentSentry scan
   run: |
     pip install agentsentry
-    agentsentry scan . --fail-on high --format markdown -o sentry.md
+    agentsentry scan . --fail-on high --format sarif -o sentry.sarif
+- name: Upload SARIF
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: sentry.sarif
 - name: Upload report
   if: always()
   uses: actions/upload-artifact@v4
   with:
     name: agentsentry-report
-    path: sentry.md
+    path: sentry.sarif
 ```
 
 ## Rules
@@ -160,6 +174,11 @@ Then add a fixture under `tests/fixtures/` and assert the rule fires.
 - [ ] HTML report with filtering
 - [ ] Pre-commit hook packaging
 - [ ] Opt-in heuristic pack (typosquatting, entropy scoring)
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Latest: **0.3.0** — SARIF output, baselines, rule filters,
+summary-only reports, and another round of false-positive cuts.
 
 ## Disclaimer
 

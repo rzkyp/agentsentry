@@ -82,6 +82,9 @@ _PLACEHOLDER_VALUE = re.compile(
     r"(?i)(your[-_]|demo[_-]?key|changeme|placeholder|\$\{|<[^>]{1,40}>|\.\.\.|x{3,}|redacted|op://)"
 )
 
+#: RFC 5737 / RFC 3849 documentation and benchmark ranges — examples, not hosts.
+_DOCUMENTATION_NETS = {(192, 0, 2), (198, 51, 100), (203, 0, 113), (233, 252, 0)}
+
 
 def _ignore_injection_prose(matched: str, before: str = "") -> bool:
     """`ignore previous instructions` quoted inside prose is not an attack."""
@@ -100,12 +103,12 @@ def _ignore_path_like_blob(matched: str, before: str = "") -> bool:
     return "/" in matched
 
 
-def _ignore_loopback_or_private(matched: str, before: str = "") -> bool:
-    """`127.0.0.1` and RFC1918 addresses are local, not exfil endpoints."""
+def _ignore_safe_ip(matched: str, before: str = "") -> bool:
+    """Loopback, RFC1918, link-local, documentation ranges and UA versions are not C2."""
     m = re.search(r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})", matched)
     if not m:
         return False
-    a, b = int(m.group(1)), int(m.group(2))
+    a, b, c, d = (int(m.group(i)) for i in range(1, 5))
     if a in (0, 10, 127):
         return True
     if a == 172 and 16 <= b <= 31:
@@ -114,7 +117,16 @@ def _ignore_loopback_or_private(matched: str, before: str = "") -> bool:
         return True
     if a == 169 and b == 254:
         return True
+    if (a, b, c) in _DOCUMENTATION_NETS:
+        return True
+    if c == 0 and d == 0:  # version-looking, e.g. Chrome/124.0.0.0
+        return True
     return False
+
+
+def _ignore_empty_dynamic_call(matched: str, before: str = "") -> bool:
+    """`eval()` / `exec()` written as prose is not a call."""
+    return matched in ("eval()", "exec()", "compile()")
 
 
 def _rule(rule_id, title, severity, pattern, description, remediation,
@@ -185,7 +197,8 @@ RULES = [
         r"|disregard\s+(?:all\s+)?(?:previous|above|prior|earlier)"
         r"|new\s+instructions?\s*:"
         r"|system\s+override"
-        r"|you\s+must\s+(?:always|now|instead)"
+        r"|you\s+must\s+(?:always\s+|now\s+|instead\s+)?"
+        r"(?:ignore|reveal|output|send|run|execute|disregard|forget|print|expose)"
         r"|override\s+(?:the\s+)?(?:system\s+)?prompt"
         r"|forget\s+(?:everything|all)\s+(?:above|previous|prior))",
         "The text contains classic prompt-injection phrasing aimed at overriding agent instructions.",
@@ -314,6 +327,7 @@ RULES = [
         r"(?<![\w.])(eval|exec|compile)\(",
         "Dynamic execution primitives can turn untrusted input into code.",
         "Prefer static dispatch or lookup tables; if unavoidable, sandbox and validate the input.",
+        ignore=_ignore_empty_dynamic_call,
     ),
     _rule(
         "MCP-002",
@@ -368,7 +382,7 @@ RULES = [
         r"((?:https?://)?\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{2,5})?(?:/[^\s\"']*)?)",
         "The file references a raw IP address, which can indicate a throwaway C2 or exfil host.",
         "Use a named, reviewable service endpoint.",
-        ignore=_ignore_loopback_or_private,
+        ignore=_ignore_safe_ip,
     ),
 ]
 
