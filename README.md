@@ -1,5 +1,17 @@
 # AgentSentry
 
+<p align="center">
+  <img src="docs/banner.png" alt="AgentSentry — security scanner for MCP servers and AI agent skills" width="100%">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.3.0-2ea44f" alt="version 0.3.0">
+  <img src="https://img.shields.io/badge/python-3.9+-3776ab" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/dependencies-0-2ea44f" alt="zero dependencies">
+  <img src="https://img.shields.io/badge/license-MIT-8a2be2" alt="MIT license">
+  <img src="https://img.shields.io/badge/SARIF-2.1.0-0b3d91" alt="SARIF 2.1.0">
+</p>
+
 **Security scanner for MCP servers and AI agent skills.**
 
 AgentSentry reads your MCP server configs and agent skill directories, then flags the stuff
@@ -10,6 +22,20 @@ supply-chain risks.
 Zero dependencies. Python 3.9+. One binary-free CLI, JSON/Markdown output, CI-friendly exit codes.
 
 ---
+
+## Features
+
+- **23 detection rules** across CRITICAL / HIGH / MEDIUM / LOW — prompt injection, tool
+  poisoning, exfiltration endpoints, hardcoded credentials, destructive commands,
+  persistence, unpinned MCP packages, `autoApprove: ["*"]`, supply-chain fetches, and more.
+- **Two target types** — MCP configs (`.mcp.json`, `claude_desktop_config.json`,
+  `cline_mcp_settings.json`, any JSON with an `mcpServers` key) and agent skill
+  directories (`SKILL.md` plus the scripts next to it).
+- **Four output formats** — terminal table, JSON, Markdown, and **SARIF 2.1.0** for
+  GitHub code scanning.
+- **CI-first** — `--fail-on`, `--baseline` for known findings, and exit codes
+  `0` / `1` / `2`.
+- **Quiet by design** — offline, no dependencies, never executes the code it scans.
 
 ## Why this exists
 
