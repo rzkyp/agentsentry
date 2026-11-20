@@ -1,103 +1,106 @@
 # AgentSentry
 
 <p align="center">
-  <img src="docs/banner.png" alt="AgentSentry — security scanner for MCP servers and AI agent skills" width="100%">
+  <img src="docs/banner.png" alt="AgentSentry — pemindai keamanan server MCP dan AI agent skill" width="100%">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.0-2ea44f" alt="version 0.3.0">
-  <img src="https://img.shields.io/badge/python-3.9+-3776ab" alt="Python 3.9+">
-  <img src="https://img.shields.io/badge/dependencies-0-2ea44f" alt="zero dependencies">
-  <img src="https://img.shields.io/badge/license-MIT-8a2be2" alt="MIT license">
+  <img src="https://img.shields.io/badge/versi-0.3.0-2ea44f" alt="versi 0.3.0">
+  <img src="https://img.shields.io/badge/python-3.9%2B-3776ab" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/dependensi-0-2ea44f" alt="tanpa dependensi">
+  <img src="https://img.shields.io/badge/lisensi-MIT-8a2be2" alt="lisensi MIT">
   <img src="https://img.shields.io/badge/SARIF-2.1.0-0b3d91" alt="SARIF 2.1.0">
 </p>
 
-**Security scanner for MCP servers and AI agent skills.**
+**Pemindai keamanan untuk server MCP dan AI agent skill.**
 
-AgentSentry reads your MCP server configs and agent skill directories, then flags the stuff
-that turns a helpful agent into a liability: prompt injection, tool poisoning, data
-exfiltration, credential theft, destructive commands, persistence mechanisms, and
-supply-chain risks.
+AgentSentry membaca konfigurasi server MCP dan folder agent skill, lalu melaporkan hal-hal
+yang membuat agen yang tadinya membantu berubah jadi lubang risiko: prompt injection,
+tool poisoning, ekfiltrasi data, pencurian kredensial, perintah destruktif, mekanisme
+persistence, dan risiko supply chain.
 
-Zero dependencies. Python 3.9+. One binary-free CLI, JSON/Markdown output, CI-friendly exit codes.
+Tanpa dependensi. Python 3.9+. Satu CLI tanpa berkas biner, keluaran JSON/Markdown,
+exit code yang ramah CI.
 
 ---
 
-## Features
+## Fitur
 
-- **23 detection rules** across CRITICAL / HIGH / MEDIUM / LOW — prompt injection, tool
-  poisoning, exfiltration endpoints, hardcoded credentials, destructive commands,
-  persistence, unpinned MCP packages, `autoApprove: ["*"]`, supply-chain fetches, and more.
-- **Two target types** — MCP configs (`.mcp.json`, `claude_desktop_config.json`,
-  `cline_mcp_settings.json`, any JSON with an `mcpServers` key) and agent skill
-  directories (`SKILL.md` plus the scripts next to it).
-- **Four output formats** — terminal table, JSON, Markdown, and **SARIF 2.1.0** for
+- **23 aturan deteksi** dengan tingkat CRITICAL / HIGH / MEDIUM / LOW — prompt injection,
+  tool poisoning, endpoint eksfiltrasi, kredensial hardcoded, perintah destruktif,
+  persistence, paket MCP yang tidak dipin, `autoApprove: ["*"]`, ambil dependensi dari
+  VCS/URL, dan lain-lain.
+- **Dua jenis target** — konfigurasi MCP (`.mcp.json`, `claude_desktop_config.json`,
+  `cline_mcp_settings.json`, serta file JSON apa pun yang memuatkunci `mcpServers`) dan
+  folder agent skill (`SKILL.md` beserta skrip di sebelahnya).
+- **Empat format keluaran** — tabel terminal, JSON, Markdown, dan **SARIF 2.1.0** untuk
   GitHub code scanning.
-- **CI-first** — `--fail-on`, `--baseline` for known findings, and exit codes
-  `0` / `1` / `2`.
-- **Quiet by design** — offline, no dependencies, never executes the code it scans.
+- **Ramah CI** — `--fail-on`, `--baseline` untuk temuan yang sudah diketahui, serta
+  exit code `0` / `1` / `2`.
+- **Senyap oleh desain** — offline, tanpa dependensi, tidak pernah mengeksekusi kode yang
+  dipindai.
 
-## Why this exists
+## Kenapa ini ada
 
-Agents now execute tools with your privileges. A single `SKILL.md` or `.mcp.json` pulled from
-a repo can:
+Agen sekarang mengeksekusi tool dengan hak aksesmu. Satu berkas `SKILL.md` atau `.mcp.json`
+yang diambil dari repo orang bisa:
 
-- run a remote script through `bash` at install time,
-- auto-approve every tool call (`"autoApprove": ["*"]`),
-- read `~/.ssh` / `~/.aws/credentials` and POST them to a webhook,
-- hide instructions from the user inside `<tool_description>` blocks.
+- menjalankan skrip remote lewat `bash` saat instalasi,
+- menyetujui semua panggilan tool otomatis (`"autoApprove": ["*"]`),
+- membaca `~/.ssh` / `~/.aws/credentials` lalu mengirimnya ke webhook,
+- menyembunyikan instruksi dari pengguna di dalam blok `<tool_description>`.
 
-AgentSentry makes those visible **before** the agent runs, not after.
+AgentSentry membuat hal itu terlihat **sebelum** agen berjalan, bukan sesudahnya.
 
-## What it scans
+## Yang dipindai
 
-| Target | Detection |
+| Target | Deteksi |
 |---|---|
-| MCP configs (`.mcp.json`, `mcp.json`, `claude_desktop_config.json`, `cline_mcp_settings.json`, any `*.json` with an `mcpServers` key) | unpinned packages, permission bypass flags, auto-approve-all, secrets in `env`, plain-HTTP transport, shell-backed servers, bare IP endpoints |
-| Agent skill dirs (any directory containing `SKILL.md`, plus sibling `.py/.sh/.ps1/.js/.ts/.md` files) | prompt injection phrasing, tool poisoning markup, pipe-to-shell, reverse shells, obfuscation, destructive commands, persistence, credential access, bulk archiving, hardcoded secrets |
+| Konfigurasi MCP (`.mcp.json`, `mcp.json`, `claude_desktop_config.json`, `cline_mcp_settings.json`, file `*.json` apa pun yang memuat `mcpServers`) | paket tidak dipin, flag lewati izin, auto-approve semua, rahasia di `env`, transport HTTP polos, server berbasis shell, endpoint IP mentah |
+| Folder agent skill (folder apa pun berisi `SKILL.md`, plus berkas `.py/.sh/.ps1/.js/.ts/.md` di dalamnya) | prompt injection, tool poisoning, pipe-ke-shell, reverse shell, obfuscation, perintah destruktif, persistence, akses kredensial, arsip massal, kredensial hardcoded |
 
-## Install
+## Instal
 
 ```bash
-pip install agentsentry          # from PyPI (once published)
-# or run straight from a checkout:
+pip install agentsentry          # dari PyPI (saat sudah terbit)
+# atau jalankan langsung dari hasil clone:
 git clone https://github.com/rzkyp/agentsentry.git
 cd agentsentry
 python -m agentsentry --help
 ```
 
-## Quick start
+## Mulai cepat
 
 ```bash
-# scan a project (MCP configs + skills)
+# pindai sebuah proyek (konfigurasi MCP + skill)
 agentsentry scan .
 
-# machine-readable output
-agentsentry scan . --format json -o sentry.json
+# keluaran untuk mesin / CI
+agentsentry scan . --format json  -o sentry.json
 
-# human report for a PR / ticket
+# laporan untuk tiket / PR
 agentsentry scan . --format markdown -o sentry.md
 
-# report summary in Indonesian
+# ringkasan laporan dalam bahasa Indonesia
 agentsentry scan . --format markdown --lang id -o laporan.md
 
-# skip vendor trees and caches
+# lewati vendor tree dan cache
 agentsentry scan . --exclude "*/cache/*" --exclude "vendor"
 
-# GitHub code scanning input
+# masukan GitHub code scanning
 agentsentry scan . --format sarif -o sentry.sarif
 
-# acknowledge known findings so CI only fails on new ones
+# akui temuan yang sudah diketahui, CI gagal hanya untuk temuan baru
 agentsentry scan . --baseline baseline.json --fail-on high
 
-# compact report (no per-finding details)
+# laporan ringkas (tanpa detail per temuan)
 agentsentry scan . --summary-only --format markdown -o ringkasan.md
 
-# list every rule
+# lihat semua aturan
 agentsentry rules
 ```
 
-Example (malicious fixture):
+Contoh pada fixture berbahaya:
 
 ```
 RULE       SEVERITY  LOCATION        SNIPPET
@@ -108,21 +111,28 @@ SEC-001    HIGH      .mcp.json:7     "OPENAI_API_KEY": "sk-abc...3456"
 MCP-004    HIGH      .mcp.json:10    "autoApprove": ["*"]
 ```
 
-> **Scan the project, not your home directory.** AgentSentry matches text patterns, so
-> pointing it at `$HOME` also sweeps application installs, editor bundles and caches.
-> Target the repository under review and use `--exclude` for vendor trees.
+> **Pindai proyeknya, bukan home directory-mu.** AgentSentry mencocokkan pola teks, jadi
+> mengarahkannya ke `$HOME` juga menyapu instalasi aplikasi, bundel editor, dan cache.
+> Arahkan ke repository yang sedang kamu tinjau, dan pakai `--exclude` untuk vendor tree.
 
-## Exit codes
+## Exit code
 
-| Code | Meaning |
+| Kode | Arti |
 |---|---|
-| `0` | no finding at or above the `--fail-on` threshold |
-| `1` | at least one finding at or above the threshold |
-| `2` | usage / path error |
+| `0` | tidak ada temuan pada atau di atas ambang `--fail-on` |
+| `1` | ada minimal satu temuan pada atau di atas ambang tersebut |
+| `2` | kesalahan pemakaian / path |
 
-Default threshold is `high`. Override with `--fail-on critical|high|medium|low|none`.
+Ambang bawaan adalah `high`. Ganti dengan `--fail-on critical|high|medium|low|none`.
 
-## CI
+## Di mana bisa dipakai
+
+- **Claude Code / Codex / Cursor / Gemini CLI** — pasang di repo, jalankan manual atau sebagai
+  pre-commit hook.
+- **CI (GitHub Actions / GitLab)** — gerbang sebelum merge.
+- **MCP tool** — bungkus CLI ini kalau agenmu ingin memanggilnya langsung.
+
+## Contoh CI
 
 ```yaml
 - name: AgentSentry scan
@@ -142,75 +152,77 @@ Default threshold is `high`. Override with `--fail-on critical|high|medium|low|n
     path: sentry.sarif
 ```
 
-## Rules
+## Aturan
 
-| Rule | Severity | Scope | Title |
+| Rule | Severity | Judul | Arti singkat |
 |---|---|---|---|
-| `EXF-001` | CRITICAL | all | Exfiltration endpoint referenced |
-| `EXEC-001` | CRITICAL | all | Remote script piped into a shell |
-| `EXEC-002` | CRITICAL | all | Reverse shell or interactive shell spawn |
-| `SEC-001` | CRITICAL | all | Hardcoded credential |
-| `INJ-001` | CRITICAL | all | Prompt injection phrasing |
-| `SEC-002` | HIGH | all | Secret assigned in configuration |
-| `CRED-001` | HIGH | all | Credential store access |
-| `OBF-001` | HIGH | all | Obfuscated payload |
-| `DESTR-001` | HIGH | all | Destructive filesystem command |
-| `PERSIST-001` | HIGH | all | Persistence mechanism |
-| `SCAN-001` | HIGH | all | Bulk archive of sensitive data |
-| `SKILL-001` | HIGH | all | Tool poisoning markers |
-| `MCP-001` | HIGH | mcp | Unpinned MCP package version |
-| `MCP-003` | HIGH | mcp | Permission checks disabled |
-| `MCP-004` | HIGH | mcp | All tools auto-approved |
-| `MCP-006` | HIGH | mcp | Secret in MCP environment block |
-| `EXEC-003` | MEDIUM | all | Dynamic code execution |
-| `MCP-002` | MEDIUM | mcp | Insecure transport |
-| `MCP-005` | MEDIUM | mcp | Shell-backed MCP server |
-| `SUP-001` | MEDIUM | all | Dependency fetched from VCS or URL |
-| `SUP-002` | MEDIUM | all | Custom package index |
-| `PERM-001` | MEDIUM | all | Overly permissive file rights |
-| `NET-001` | LOW | all | Bare IP endpoint |
+| `EXF-001` | CRITICAL | Exfiltration endpoint referenced | Merujuk endpoint webhook/paste/bin yang sering dipakai terima data curian. |
+| `EXEC-001` | CRITICAL | Remote script piped into a shell | Skrip remote dijalankan lewat shell tanpa diperiksa. |
+| `EXEC-002` | CRITICAL | Reverse shell or interactive shell spawn | Membuka reverse/interactive shell atau mengeksekusi payload via IEX. |
+| `SEC-001` | CRITICAL | Hardcoded credential | Private key, token API, atau kredensial cloud tertanam di berkas. |
+| `INJ-001` | CRITICAL | Prompt injection phrasing | Frasa klasik untuk menimpa instruksi agen. |
+| `SEC-002` | HIGH | Secret assigned in configuration | Nilai mirip rahasia diassign ke variabel berjenis kredensial. |
+| `CRED-001` | HIGH | Credential store access | Membaca kredensial/key dari mesin pengguna. |
+| `OBF-001` | HIGH | Obfuscated payload | Blob terenkode panjang atau primitif decode. |
+| `DESTR-001` | HIGH | Destructive filesystem command | `rm -rf` / `Remove-Item -Recurse -Force` / format. |
+| `PERSIST-001` | HIGH | Persistence mechanism | Shell profile, cron, run key, atau service. |
+| `SCAN-001` | HIGH | Bulk archive of sensitive data | Mengarsipkan folder sensitif, diduga untuk ekspor. |
+| `SKILL-001` | HIGH | Tool poisoning markers | Markup tool-call atau catatan untuk asisten di dalam skill. |
+| `MCP-006` | HIGH | Secret in MCP environment block | Rahasia tertanam di blok `env` konfigurasi MCP. |
+| `MCP-001` | HIGH | Unpinned MCP package version | Paket MCP dijalankan dari tag berubah (`@latest`). |
+| `MCP-003` | HIGH | Permission checks disabled | Prompt izin dimatikan untuk server/agensi. |
+| `MCP-004` | HIGH | All tools auto-approved | Semua tool disetujui tanpa tinjauan (`["*"]`). |
+| `EXEC-003` | MEDIUM | Dynamic code execution | `eval()` / `exec()` bisa mengubah input jadi kode. |
+| `MCP-002` | MEDIUM | Insecure transport | Server MCP diakses lewat HTTP polos. |
+| `MCP-005` | MEDIUM | Shell-backed MCP server | Server MCP berbasis shell, argumennya jalan dengan hak host. |
+| `SUP-001` | MEDIUM | Dependency fetched from VCS or URL | Dependensi diambil langsung dari repo/URL. |
+| `SUP-002` | MEDIUM | Custom package index | Instalasi paket diarahkan ke index custom. |
+| `PERM-001` | MEDIUM | Overly permissive file rights | `chmod 777` / ACL semua orang. |
+| `NET-001` | LOW | Bare IP endpoint | Referensi IP mentah, bisa mengindikasikan host C2/exfil. |
 
-## Adding a rule
+## Menambah aturan
 
-Rules are plain regexes in `agentsentry/rules.py`:
+Aturan adalah regex biasa di `agentsentry/rules.py`:
 
 ```python
 _rule(
-    "MY-001", "Short title", HIGH, r"dangerous-pattern",
-    "Why it matters.", "How to fix it.", scopes=(SCOPE_SKILL,),
+    "MY-001", "Judul singkat", HIGH, r"pola-berbahaya",
+    "Kenapa ini penting.", "Cara memperbaikinya.", scopes=(SCOPE_SKILL,),
 )
 ```
 
-Then add a fixture under `tests/fixtures/` and assert the rule fires.
+Lalu tambahkan fixture di `tests/fixtures/`, pastikan id aturannya ikut terpanggil di
+`tests/`, kemudian jalankan suite.
 
-## Limitations
+## Batasan
 
-- Pattern-based, not semantic: obfuscation that avoids these shapes will slip through.
-- Documentation can trigger a rule — a skill that *describes* `curl | bash` is still flagged.
-  Known-safe shapes are filtered out: loopback/RFC1918 addresses, JSON-schema pointers,
-  placeholder secrets (`your-api-key`, `DEMO_KEY`), and prose that quotes injection phrasing.
-- No network calls. AgentSentry never phones home and never executes scanned code.
-- It reports; it does not block. Wire it into your CI or install hook to enforce.
+- Berbasis pola, bukan semantik: obfuscation yang menghindari bentuk-bentuk ini bisa lolos.
+- Dokumentasi juga bisa memicu aturan — skill yang *menggambarkan* `curl | bash` tetap
+  dilaporkan. Bentuk aman sudah difilter: alamat loopback/RFC1918, penunjuk skema JSON,
+  rahasia placeholder (`your-api-key`, `DEMO_KEY`), dan prosa yang mengutip frasa injection.
+- Tidak ada panggilan jaringan. AgentSentry tidak menghubungi server mana pun dan tidak
+  mengeksekusi kode yang dipindai.
+- Hanya melaporkan, tidak memblokir. Pasang di CI atau pre-commit hook untuk menegakkan.
 
 ## Roadmap
 
-- [ ] `--baseline` file so teams can acknowledge known findings
-- [ ] YAML/TOML MCP config support
-- [ ] Skill frontmatter schema validation (name/description/disable-model-invocation)
-- [ ] HTML report with filtering
-- [ ] Pre-commit hook packaging
-- [ ] Opt-in heuristic pack (typosquatting, entropy scoring)
+- [ ] Dukungan berkas baseline terversi
+- [ ] Dukungan konfigurasi MCP berbentuk YAML/TOML
+- [ ] Validasi skema frontmatter skill
+- [ ] Laporan HTML dengan filter
+- [ ] Kemasan pre-commit hook
+- [ ] Paket heuristik opsional (typosquatting, penilaian entropi)
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Latest: **0.3.0** — SARIF output, baselines, rule filters,
-summary-only reports, and another round of false-positive cuts.
+Lihat [CHANGELOG.md](CHANGELOG.md). Terakhir: **0.3.0** — keluaran SARIF, baseline, filter aturan,
+laporan ringkas, dan putaran kedua pemangkasan false positive.
 
 ## Disclaimer
 
-Built for defenders: audit code **you own or are authorized to test**. Scanning third-party
-code is fine; exploiting what you find is not.
+Dibuat untuk pembela: audit kode **yang kamu miliki atau berwenang kamu uji**. Memindai kode
+pihak ketiga boleh; mengeksploitasi hasilnya tidak.
 
-## License
+## Lisensi
 
-MIT — see [LICENSE](LICENSE).
+MIT — lihat [LICENSE](LICENSE).

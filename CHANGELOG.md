@@ -2,38 +2,40 @@
 
 ## 0.3.0
 
-**Reporting**
+**Pelaporan**
 
-- `--format sarif` — SARIF 2.1.0 output, ready for GitHub code scanning
-- `--summary-only` — header, summary and per-rule table without the per-finding details
-- `--max-rows N` — cap terminal table output
-- "Files with the most findings" added to the summary
-- `--baseline FILE` — acknowledge known findings (JSON report or `RULE_ID path [line]` text);
-  baselined findings are excluded from counts and from the exit code
-- `--lang id` summary now also reports the acknowledged count
+- `--format sarif` — keluaran SARIF 2.1.0, siap untuk GitHub code scanning
+- `--summary-only` — header, ringkasan, dan tabel per aturan tanpa detail per temuan
+- `--max-rows N` — batasi jumlah baris tabel di terminal
+- Ringkasan "file dengan temuan terbanyak" ditambahkan
+- `--baseline FILE` — akui temuan yang sudah diketahui (report JSON atau teks
+  `RULE_ID path [line]`); temuan yang di-baseline tidak dihitung dan tidak memengaruhi
+  exit code
+- Ringkasan `--lang id` kini juga melaporkan jumlah temuan yang diakui
 
-**Rules**
+**Aturan**
 
-- `NET-001` ignores documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`),
-  link-local, and version-looking strings such as `Chrome/124.0.0.0`
-- `INJ-001` requires an action verb after `you must (always|now|instead)`, so task wording
-  like "you must now upgrade" is no longer flagged
-- `EXEC-003` ignores bare `eval()` / `exec()` written as prose
+- `NET-001` mengabaikan rentang dokumentasi (`192.0.2.0/24`, `198.51.100.0/24`,
+  `203.0.113.0/24`), link-local, dan string mirip versi seperti `Chrome/124.0.0.0`
+- `INJ-001` mewajibkan kata kerja berbahaya setelah `you must (always|now|instead)`,
+  sehingga tugas biasa seperti "you must now upgrade" tidak lagi terdeteksi
+- `EXEC-003` mengabaikan `eval()` / `exec()` yang ditulis sebagai prosa
 
-**Discovery**
+**Penemuan target**
 
-- `--exclude PATTERN` (repeatable, fnmatch) to skip vendor trees and caches
-- Vendor/cache directories are skipped by default (`.venv`, `node_modules`, `.gradle`, …)
-- JSON files larger than 64 KB are treated as data dumps, not MCP configs
+- `--exclude POLA` (berulang, fnmatch) untuk melewati vendor tree dan cache
+- Direktori vendor/cache dilewati secara bawaan (`.venv`, `node_modules`, `.gradle`, …)
+- Berkas JSON larger dari 64 KB dianggap data, bukan konfigurasi MCP
 
 ## 0.2.0
 
-- `--exclude`, `--lang`, and a plain-language summary section in every report
-- False-positive filters: loopback/RFC1918 addresses, JSON-schema pointers, placeholder
-  secrets (`your-api-key`, `DEMO_KEY`), and prose that quotes injection phrasing
-- Prose rules restricted to text files, so JSON schemas are no longer scanned as skill text
+- `--exclude`, `--lang`, dan ringkasan berbahasa mudah di setiap laporan
+- Filter false positive: alamat loopback/RFC1918, penunjuk skema JSON, rahasia placeholder
+  (`your-api-key`, `DEMO_KEY`), serta prosa yang mengutip frasa injection
+- Aturan prosa dibatasi pada berkas teks, sehingga skema JSON tidak lagi dipindai sebagai
+  teks skill
 
 ## 0.1.0
 
-- Initial release: 23 detection rules, MCP config and agent-skill discovery,
-  table/JSON/Markdown output, CI-friendly exit codes
+- Rilis awal: 23 aturan deteksi, penemuan konfigurasi MCP dan agent skill,
+  keluaran tabel/JSON/Markdown, exit code ramah CI
