@@ -5,6 +5,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/logo.png" alt="ZEXO — ZeroDev" width="110">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/versi-0.3.0-2ea44f" alt="versi 0.3.0">
   <img src="https://img.shields.io/badge/python-3.9%2B-3776ab" alt="Python 3.9+">
   <img src="https://img.shields.io/badge/dependensi-0-2ea44f" alt="tanpa dependensi">
